@@ -16,23 +16,27 @@ FoamFile
 
 defaultFieldValues
 (
-    volScalarFieldValue p 1e5
+    volScalarFieldValue p 0
     volVectorFieldValue U (0 0 0)
 );
 
-regions
-(
-    // Set cell values
-    // (does zerogradient on boundaries)
-    boxToCell
-    {
-        box (0 0 -1) (0.1461 0.292 1);
+field         "p";
 
-        fieldValues
-        (
-            volScalarFieldValue p 1
-        );
-    }
-);
+mode	      serial;
+
+relativeTime  true;
+
+goalTime      298; //0.335;
+
+//the number of modes used for reconstruction
+usingModes    10;
+
+saveModes     true;
+
+// name for coefficients file without extension
+timeFile      "TimeCoeffs.txt"; 
+
+// name for modes file without extension. Regexp allowed and prefered
+modesFile     "psi_.*";
 
 // ************************************************************************* //
