@@ -1,0 +1,43 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  3.0.0                                 |
+|   \\  /    A nd           | Web:      www.OpenFOAM.org                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      setFieldsDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+defaultFieldValues
+(
+    volScalarFieldValue p 0
+    volVectorFieldValue U (0 0 0)
+);
+
+field         "p";
+
+//mode to process results
+mode          parallel;
+
+relativeTime  true;
+
+goalTime      16; //0.335;
+
+//the number of modes used for reconstruction
+usingModes    2;
+
+saveModes     true;
+
+// name for coefficients file without extension
+timeFile      "TimeCoeffs"; 
+
+// name for modes file without extension. Regexp allowed and prefered
+modesFile     "mode.*";
+
+// ************************************************************************* //

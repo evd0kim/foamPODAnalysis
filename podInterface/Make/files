@@ -1,0 +1,7 @@
+podInterface/podInterface.C
+podInterface/podInterfaceFunctionObject.C
+
+podWriter/podWriters.C
+podWriter/rawSpark/rawSparkWriterRunTime.C
+
+LIB = $(FOAM_USER_LIBBIN)/libPODAnalysis

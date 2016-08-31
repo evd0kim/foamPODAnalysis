@@ -1,0 +1,7 @@
+EXE_INC = \
+    -I../podWriters \
+    -I$(LIB_SRC)/fileFormats/coordSet \
+    -I$(LIB_SRC)/finiteVolume/lnInclude
+
+LIB_LIBS = \
+    -lfiniteVolume

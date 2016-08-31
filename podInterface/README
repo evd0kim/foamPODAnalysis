@@ -1,0 +1,15 @@
+Библиотека создаёт файлы в директории:
+
+./testCase/postProcessing/POD
+
+Создаются файлы формата
+
+raw_"имя поля"_"шаг времени"_"номер отрезка"_"величина отрезка".spark
+
+Например:
+raw_p_3_0x5000.spark  
+raw_p_3_1x5000.spark  
+raw_p_4_0x5000.spark  
+raw_p_4_1x5000.spark  
+raw_p_5_0x5000.spark  
+raw_p_5_1x5000.spark
