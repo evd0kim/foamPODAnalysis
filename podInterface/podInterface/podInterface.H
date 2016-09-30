@@ -98,10 +98,10 @@ class podInterface
         int writePrecision_;
 
   //-
-        word orientation_;
+  //word orientation_;
 
   //-
-        word averaging_;
+  //word averaging_;
   
         bool debug_;
   
@@ -116,39 +116,18 @@ class podInterface
 
     // Private Member Functions
 
-        //- Helper function to create/store/return the mag field
-        template<class FieldType>
-        FieldType& magField(const word& magName, const dimensionSet& dims);
-
-        //- Helper function to calculate the magnitude of different field types
-        template<class Type>
-        void calc
-        (
-            const word& fieldName,
-            const word& resultName,
-            bool& processed
-        );
-
-        //- Write sampled fieldName on surface and on outputDir path
-        // template<class Type>
-        // void writeSurface
-        // (
-        //     const Field<Type>& values,
-        //     const label surfI,
-        //     const word& fieldName,
-        //     const fileName& outputDir
-        // );
-
         void writeChunkedField
         (
          int& index, 
-         const scalarField& chunkedField
+         const scalarField& chunkedField,
+         word& nameToWrite
          );
 
         void writeField
         (
          int& chunkIndex, 
-         const scalarField& field
+         const scalarField& field,
+         word& nameToWrite
          );
 
         void writeMappingFile
@@ -223,12 +202,6 @@ public:
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-#ifdef NoRepository
-    #include "podInterfaceTemplates.C"
-#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

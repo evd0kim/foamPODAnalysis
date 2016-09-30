@@ -37,6 +37,8 @@ License
 #include "OStringStream.H"
 #include "IStringStream.H"
 
+#include "direction.H"
+
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
 namespace Foam
@@ -65,8 +67,8 @@ Foam::podInterface::podInterface
     timeEnd_(1),
     chunkNumber_(3),
     writePrecision_(9),
-    orientation_("horizontal"),
-    averaging_("weighted"),
+    //    orientation_("horizontal"),
+    //averaging_("weighted"),
     debug_(true),
     times_(),
     scalarFormatterPtr_(NULL),
@@ -123,13 +125,11 @@ void Foam::podInterface::read(const dictionary& dict)
         dict.lookup("timeEnd") >> timeEnd_;
         dict.lookup("chunkNumber") >> chunkNumber_;
         dict.lookup("writePrecision") >> writePrecision_;
-        dict.lookup("orientation") >> orientation_;
-        dict.lookup("averaging") >> averaging_;
+        //dict.lookup("orientation") >> orientation_;
+        //dict.lookup("averaging") >> averaging_;
 
         debug_ = dict.lookupOrDefault("debug", false);
         
-        debug_ = true;
-
         if (resultName_ == "none")
         {
             resultName_ = "mode" + fieldName_ ;
@@ -200,40 +200,86 @@ void Foam::podInterface::write()
           Info<<"Proper Orthogonal Decomposition library. Writing in parallel mode>>"<<nl
               <<"    Field:"<<fieldName_<<nl;
 
-          const scalarField& vf = obr_.lookupObject<scalarField>(fieldName_);        
-          int fieldSize = vf.size();
-        
-          //mapping cells file
-
-          writeMappingFile(Pstream::myProcNo(), fieldSize);
-          
-          int procChunk = chunkNumber_*(Pstream::myProcNo());
-
-          writeField(procChunk, vf);
-          
-          if(debug_)
+          //We have only one vector in domain usually
+          if(fieldName_!="U")
             {
-              Pout<<"Chunk field size = " << fieldSize<<nl
-                  <<"Proc chunk = "<<procChunk<<nl
-                  <<"Proc ID = "<<Pstream::myProcNo()<<endl;
+              const scalarField& vf = obr_.lookupObject<scalarField>(fieldName_);        
+              int fieldSize = vf.size();
+        
+              //mapping cells file
+
+              writeMappingFile(Pstream::myProcNo(), fieldSize);
+          
+              int procChunk = chunkNumber_*(Pstream::myProcNo());
+
+              writeField(procChunk, vf, fieldName_);
+          
+              if(debug_)
+                {
+                  Pout<<"Chunk field size = " << fieldSize<<nl
+                      <<"Proc chunk = "<<procChunk<<nl
+                      <<"Proc ID = "<<Pstream::myProcNo()<<endl;
+                }
             }
+          else
+            {
+              const volVectorField& field = obr_.lookupObject<volVectorField>(fieldName_);
+              for( direction i=0; i<3; i++)
+                {
+                  Foam::word tmpName (fieldName_ + word(vector::componentNames[i]));
+                  const scalarField& vf = field.component(i)().internalField();        
+                  int fieldSize = vf.size();
+       
+                  //mapping cells file
+
+                  writeMappingFile(Pstream::myProcNo(), fieldSize);
+          
+                  int procChunk = chunkNumber_*(Pstream::myProcNo());
+
+                  writeField(procChunk, vf, tmpName);
+          
+                  if(debug_)
+                    {
+                      Pout<<"Chunk field size = " << fieldSize<<nl
+                          <<"Proc chunk = "<<procChunk<<nl
+                          <<"Proc ID = "<<Pstream::myProcNo()<<endl;
+                    }
+                }
+            };
         }
       else
         {
           Info<<"Proper Orthogonal Decomposition library>>"<<nl
               <<"    Field:"<<fieldName_<<nl;
+          if(fieldName_!="U")
+            { 
+              const scalarField& vf = obr_.lookupObject<scalarField>(fieldName_);        
+              
+              int chunkIndex = 0;
 
-          const scalarField& vf = obr_.lookupObject<scalarField>(fieldName_);        
+              writeField(chunkIndex, vf, fieldName_);
+            }
+          else
+            {
+              const volVectorField& field = obr_.lookupObject<volVectorField>(fieldName_);
+              for( direction i=0; i<vector::nComponents; i++)
+                {
+                  Foam::word tmpName (fieldName_ + word(vector::componentNames[i]));
+                  Info<<"Field name "<<tmpName;
+                  const scalarField& vf = field.component(i)().internalField();        
 
-          int chunkIndex = 0;
+                  int chunkIndex = 0;
 
-          writeField(chunkIndex, vf);
+                  writeField(chunkIndex, vf, tmpName);
+                  Info<<"FieldName changed = "<<fieldName_<<endl;
+                }
+            }
         };
     }                         
 
 }
 
-void Foam::podInterface::writeChunkedField(int& index, const scalarField& chunkedField)
+void Foam::podInterface::writeChunkedField(int& index, const scalarField& chunkedField, word& nameToWrite)
 {
   scalar currentTime = obr_.time().value();
 
@@ -248,7 +294,7 @@ void Foam::podInterface::writeChunkedField(int& index, const scalarField& chunke
      (
       currentTime,
       index, 
-      fieldName_
+      nameToWrite
       )
       );
   
@@ -266,7 +312,7 @@ void Foam::podInterface::writeChunkedField(int& index, const scalarField& chunke
 
 }
 
-void Foam::podInterface::writeField(int& chunkIndex, const scalarField& field)
+void Foam::podInterface::writeField(int& chunkIndex, const scalarField& field, word& nameToWrite)
 {
   int chunkSize = field.size()/chunkNumber_;
   int resultChunk = 0;
@@ -287,7 +333,7 @@ void Foam::podInterface::writeField(int& chunkIndex, const scalarField& field)
       
       resultChunk = Idx + chunkIndex;
 
-      writeChunkedField( resultChunk, partToWrite);
+      writeChunkedField( resultChunk, partToWrite, nameToWrite);
     }
 
   scalarField partToWrite =  
@@ -298,7 +344,7 @@ void Foam::podInterface::writeField(int& chunkIndex, const scalarField& field)
                           );
 
   resultChunk = (chunkNumber_ - 1) + chunkIndex;
-  writeChunkedField(resultChunk, partToWrite);
+  writeChunkedField(resultChunk, partToWrite, nameToWrite);
 
   if(debug_)
     {
