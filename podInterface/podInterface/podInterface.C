@@ -65,8 +65,6 @@ Foam::podInterface::podInterface
     timeEnd_(1),
     chunkNumber_(3),
     writePrecision_(9),
-    orientation_("horizontal"),
-    averaging_("weighted"),
     debug_(true),
     times_(),
     scalarFormatterPtr_(NULL),
@@ -123,13 +121,9 @@ void Foam::podInterface::read(const dictionary& dict)
         dict.lookup("timeEnd") >> timeEnd_;
         dict.lookup("chunkNumber") >> chunkNumber_;
         dict.lookup("writePrecision") >> writePrecision_;
-        dict.lookup("orientation") >> orientation_;
-        dict.lookup("averaging") >> averaging_;
 
         debug_ = dict.lookupOrDefault("debug", false);
         
-        debug_ = true;
-
         if (resultName_ == "none")
         {
             resultName_ = "mode" + fieldName_ ;

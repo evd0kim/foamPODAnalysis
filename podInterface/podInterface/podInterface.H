@@ -97,12 +97,6 @@ class podInterface
   //-
         int writePrecision_;
 
-  //-
-        word orientation_;
-
-  //-
-        word averaging_;
-  
         bool debug_;
   
         DynamicList<scalar> times_;
