@@ -48,352 +48,6 @@ Description
 
 using namespace Foam;
 
-template<class Type>
-bool setCellFieldType
-(
-    const word& fieldTypeDesc,
-    const fvMesh& mesh,
-    const labelList& selectedCells,
-    Istream& fieldValueStream
-)
-{
-    typedef GeometricField<Type, fvPatchField, volMesh> fieldType;
-
-    if (fieldTypeDesc != fieldType::typeName + "Value")
-    {
-        return false;
-    }
-
-    word fieldName(fieldValueStream);
-
-    // Check the current time directory
-    IOobject fieldHeader
-    (
-        fieldName,
-        mesh.time().timeName(),
-        mesh,
-        IOobject::MUST_READ
-    );
-
-    // Check the "constant" directory
-    if (!fieldHeader.headerOk())
-    {
-        fieldHeader = IOobject
-        (
-            fieldName,
-            mesh.time().constant(),
-            mesh,
-            IOobject::MUST_READ
-        );
-    }
-
-    // Check field exists
-    if (fieldHeader.headerOk())
-    {
-        Info<< "    Setting internal values of "
-            << fieldHeader.headerClassName()
-            << " " << fieldName << endl;
-
-        fieldType field(fieldHeader, mesh);
-
-        const Type& value = pTraits<Type>(fieldValueStream);
-
-        if (selectedCells.size() == field.size())
-        {
-            field.internalField() = value;
-        }
-        else
-        {
-            forAll(selectedCells, celli)
-            {
-                field[selectedCells[celli]] = value;
-            }
-        }
-
-        forAll(field.boundaryField(), patchi)
-        {
-            field.boundaryField()[patchi] =
-                field.boundaryField()[patchi].patchInternalField();
-        }
-
-        if (!field.write())
-        {
-            FatalErrorIn
-            (
-                "void setCellFieldType"
-                "(const fvMesh& mesh, const labelList& selectedCells,"
-                "Istream& fieldValueStream)"
-            ) << "Failed writing field " << fieldName << endl;
-        }
-    }
-    else
-    {
-        WarningIn
-        (
-            "void setCellFieldType"
-            "(const fvMesh& mesh, const labelList& selectedCells,"
-            "Istream& fieldValueStream)"
-        ) << "Field " << fieldName << " not found" << endl;
-
-        // Consume value
-        (void)pTraits<Type>(fieldValueStream);
-    }
-
-    return true;
-}
-
-
-class setCellField
-{
-
-public:
-
-    setCellField()
-    {}
-
-    autoPtr<setCellField> clone() const
-    {
-        return autoPtr<setCellField>(new setCellField());
-    }
-
-    class iNew
-    {
-        const fvMesh& mesh_;
-        const labelList& selectedCells_;
-
-    public:
-
-        iNew(const fvMesh& mesh, const labelList& selectedCells)
-        :
-            mesh_(mesh),
-            selectedCells_(selectedCells)
-        {}
-
-        autoPtr<setCellField> operator()(Istream& fieldValues) const
-        {
-            word fieldType(fieldValues);
-
-            if
-            (
-               !(
-                    setCellFieldType<scalar>
-                        (fieldType, mesh_, selectedCells_, fieldValues)
-                 || setCellFieldType<vector>
-                        (fieldType, mesh_, selectedCells_, fieldValues)
-                 || setCellFieldType<sphericalTensor>
-                        (fieldType, mesh_, selectedCells_, fieldValues)
-                 || setCellFieldType<symmTensor>
-                        (fieldType, mesh_, selectedCells_, fieldValues)
-                 || setCellFieldType<tensor>
-                        (fieldType, mesh_, selectedCells_, fieldValues)
-                )
-            )
-            {
-                WarningIn("setCellField::iNew::operator()(Istream& is)")
-                    << "field type " << fieldType << " not currently supported"
-                    << endl;
-            }
-
-            return autoPtr<setCellField>(new setCellField());
-        }
-    };
-};
-
-
-template<class Type>
-bool setFaceFieldType
-(
-    const word& fieldTypeDesc,
-    const fvMesh& mesh,
-    const labelList& selectedFaces,
-    Istream& fieldValueStream
-)
-{
-    typedef GeometricField<Type, fvPatchField, volMesh> fieldType;
-
-    if (fieldTypeDesc != fieldType::typeName + "Value")
-    {
-        return false;
-    }
-
-    word fieldName(fieldValueStream);
-
-    // Check the current time directory
-    IOobject fieldHeader
-    (
-        fieldName,
-        mesh.time().timeName(),
-        mesh,
-        IOobject::MUST_READ
-    );
-
-    // Check the "constant" directory
-    if (!fieldHeader.headerOk())
-    {
-        fieldHeader = IOobject
-        (
-            fieldName,
-            mesh.time().constant(),
-            mesh,
-            IOobject::MUST_READ
-        );
-    }
-
-    // Check field exists
-    if (fieldHeader.headerOk())
-    {
-        Info<< "    Setting patchField values of "
-            << fieldHeader.headerClassName()
-            << " " << fieldName << endl;
-
-        fieldType field(fieldHeader, mesh);
-
-        const Type& value = pTraits<Type>(fieldValueStream);
-
-        // Create flat list of selected faces and their value.
-        Field<Type> allBoundaryValues(mesh.nFaces()-mesh.nInternalFaces());
-        forAll(field.boundaryField(), patchi)
-        {
-            SubField<Type>
-            (
-                allBoundaryValues,
-                field.boundaryField()[patchi].size(),
-                field.boundaryField()[patchi].patch().start()
-              - mesh.nInternalFaces()
-            ).assign(field.boundaryField()[patchi]);
-        }
-
-        // Override
-        bool hasWarned = false;
-        labelList nChanged
-        (
-            returnReduce(field.boundaryField().size(), maxOp<label>()),
-            0
-        );
-        forAll(selectedFaces, i)
-        {
-            label facei = selectedFaces[i];
-            if (mesh.isInternalFace(facei))
-            {
-                if (!hasWarned)
-                {
-                    hasWarned = true;
-                    WarningIn("setFaceFieldType(..)")
-                        << "Ignoring internal face " << facei
-                        << ". Suppressing further warnings." << endl;
-                }
-            }
-            else
-            {
-                label bFaceI = facei-mesh.nInternalFaces();
-                allBoundaryValues[bFaceI] = value;
-                nChanged[mesh.boundaryMesh().patchID()[bFaceI]]++;
-            }
-        }
-
-        Pstream::listCombineGather(nChanged, plusEqOp<label>());
-        Pstream::listCombineScatter(nChanged);
-
-        // Reassign.
-        forAll(field.boundaryField(), patchi)
-        {
-            if (nChanged[patchi] > 0)
-            {
-                Info<< "    On patch "
-                    << field.boundaryField()[patchi].patch().name()
-                    << " set " << nChanged[patchi] << " values" << endl;
-                field.boundaryField()[patchi] == SubField<Type>
-                (
-                    allBoundaryValues,
-                    field.boundaryField()[patchi].size(),
-                    field.boundaryField()[patchi].patch().start()
-                  - mesh.nInternalFaces()
-                );
-            }
-        }
-
-        if (!field.write())
-        {
-            FatalErrorIn
-            (
-                "void setFaceFieldType"
-                "(const fvMesh& mesh, const labelList& selectedFaces,"
-                "Istream& fieldValueStream)"
-            )   << "Failed writing field " << field.name() << exit(FatalError);
-        }
-    }
-    else
-    {
-        WarningIn
-        (
-            "void setFaceFieldType"
-            "(const fvMesh& mesh, const labelList& selectedFaces,"
-            "Istream& fieldValueStream)"
-        ) << "Field " << fieldName << " not found" << endl;
-
-        // Consume value
-        (void)pTraits<Type>(fieldValueStream);
-    }
-
-    return true;
-}
-
-
-class setFaceField
-{
-
-public:
-
-    setFaceField()
-    {}
-
-    autoPtr<setFaceField> clone() const
-    {
-        return autoPtr<setFaceField>(new setFaceField());
-    }
-
-    class iNew
-    {
-        const fvMesh& mesh_;
-        const labelList& selectedFaces_;
-
-    public:
-
-        iNew(const fvMesh& mesh, const labelList& selectedFaces)
-        :
-            mesh_(mesh),
-            selectedFaces_(selectedFaces)
-        {}
-
-        autoPtr<setFaceField> operator()(Istream& fieldValues) const
-        {
-            word fieldType(fieldValues);
-
-            if
-            (
-               !(
-                    setFaceFieldType<scalar>
-                        (fieldType, mesh_, selectedFaces_, fieldValues)
-                 || setFaceFieldType<vector>
-                        (fieldType, mesh_, selectedFaces_, fieldValues)
-                 || setFaceFieldType<sphericalTensor>
-                        (fieldType, mesh_, selectedFaces_, fieldValues)
-                 || setFaceFieldType<symmTensor>
-                        (fieldType, mesh_, selectedFaces_, fieldValues)
-                 || setFaceFieldType<tensor>
-                        (fieldType, mesh_, selectedFaces_, fieldValues)
-                )
-            )
-            {
-                WarningIn("setFaceField::iNew::operator()(Istream& is)")
-                    << "field type " << fieldType << " not currently supported"
-                    << endl;
-            }
-
-            return autoPtr<setFaceField>(new setFaceField());
-        }
-    };
-};
 /*
 template<>
 Foam::label readValue(const string& line)
@@ -610,6 +264,182 @@ DynamicList< scalar > readLineAndSplit
   return returnList;
 }
 
+template<class Type>
+bool reconstructCellFieldType
+(
+    const word& fieldTypeDesc,
+    const fvMesh& mesh,
+    Istream& fieldValueStream,
+    const IOdictionary& settingsDict
+)
+{
+    typedef GeometricField<Type, fvPatchField, volMesh> fieldType;
+
+    if (fieldTypeDesc != fieldType::typeName)
+    {
+        return false;
+    }
+
+    // reconstruction field name, read from stream
+    word fieldName(fieldValueStream);
+    
+    // reconstruction mode
+    word mode = 
+      settingsDict.lookupOrDefault<word>("mode", "serial");
+
+    // relative time switch. relative means that goal time is taken between first and last snapshots
+    word relativeFlag = 
+      settingsDict.lookupOrDefault<word>("relativeTime", "true");
+
+    // the time we are reconstructing for
+    scalar goalTime = 
+      settingsDict.lookupOrDefault("goalTime", 0.0);
+
+    // amount of modes we take for reconstruction   
+    int modesNumber = 
+      settingsDict.lookupOrDefault("usingModes", 1);
+
+    // save data  switch. Manage to save modes in each own separate field
+    word saveFlag = 
+      settingsDict.lookupOrDefault<word>("saveModes", "false");
+
+    // Input for POD -- related files search
+    word timeFileName = 
+      settingsDict.lookupOrDefault<word>("timeFile", "timeCoeffs.txt");
+
+    // 
+    word modesFileName = 
+      settingsDict.lookupOrDefault<word>("modesFile", "mode*");
+    wordRe modesMaskName (modesFileName);
+
+    if (wordRe::isPattern(modesFileName))
+      {
+	modesMaskName.compile(wordRe::REGEXP);
+      }
+    else
+      {
+	modesMaskName.compile(wordRe::LITERAL);
+      }
+    
+    // Check the current time directory
+    
+    IOobject fieldHeader
+    (
+        fieldName,
+        mesh.time().timeName(),
+        mesh,
+        IOobject::MUST_READ
+     );
+
+    // Check the "constant" directory
+    if (!fieldHeader.headerOk())
+    {
+      fieldHeader = IOobject
+        (
+	 fieldName,
+	 mesh.time().constant(),
+	 mesh,
+	 IOobject::MUST_READ
+	 );
+    }
+    
+    // Check field exists
+    if (fieldHeader.headerOk())
+    {
+        Info<< "    Reconstructing internal values of "
+            << fieldHeader.headerClassName()
+            << " " << fieldName << endl;
+
+        fieldType field(fieldHeader, mesh);
+
+        const Type& value = pTraits<Type>(fieldValueStream);
+        	
+	forAll(field, celli)
+        {
+	  field[celli] = value;
+        }
+       
+        forAll(field.boundaryField(), patchi)
+        {
+            field.boundaryField()[patchi] =
+                field.boundaryField()[patchi].patchInternalField();
+        }
+
+        if (!field.write())
+        {
+            FatalErrorIn
+            (
+                "void reconstructCellFieldType"
+                "(const fvMesh& mesh, const labelList& selectedCells,"
+                "Istream& fieldValueStream)"
+            ) << "Failed writing field " << fieldName << endl;
+        }
+    }
+    else
+    {
+        WarningIn
+        (
+            "void reconstructCellFieldType"
+            "(const fvMesh& mesh, const labelList& selectedCells,"
+            "Istream& fieldValueStream)"
+        ) << "Field " << fieldName << " not found" << endl;
+
+        // Consume value
+        (void)pTraits<Type>(fieldValueStream);
+    }
+
+    return true;
+}
+
+class reconstructCellField
+{
+
+public:
+
+    reconstructCellField()
+    {}
+
+    autoPtr<reconstructCellField> clone() const
+    {
+        return autoPtr<reconstructCellField>(new reconstructCellField());
+    }
+
+    class iNew
+    {
+      const fvMesh& mesh_;
+      const IOdictionary& dict_;
+
+    public:
+
+      iNew(const fvMesh& mesh, const IOdictionary& dict)
+        :
+	mesh_(mesh),
+	dict_(dict)
+      {}
+
+        autoPtr<reconstructCellField> operator()(Istream& fieldValues) const
+        {
+            word fieldType(fieldValues);
+
+            if
+            (
+	     !(
+	       reconstructCellFieldType<scalar>
+	       (fieldType, mesh_, fieldValues, dict_)
+	       || reconstructCellFieldType<vector>
+	       (fieldType, mesh_, fieldValues, dict_)
+	       )
+	     )
+	      {
+                WarningIn("reconstructCellField::iNew::operator()(Istream& is)")
+		  << "field type " << fieldType << " not currently supported"
+		  << endl;
+	      }
+
+            return autoPtr<reconstructCellField>(new reconstructCellField());
+        }
+    };
+};
   
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -636,6 +466,15 @@ int main(int argc, char *argv[])
             IOobject::NO_WRITE
         )
     );
+
+    if (setPODFieldsDict.found("reconstructFields"))
+      {
+        Info<< "Reconstructing field values" << endl;       
+	wordReList fieldNames;
+	setPODFieldsDict.lookup("reconstructFields") >> fieldNames;
+      }
+
+    /*
     //read default values
     if (setPODFieldsDict.found("defaultFieldValues"))
     {
@@ -648,7 +487,7 @@ int main(int argc, char *argv[])
         Info<< endl;
     }
     //
-
+    */
     // reconstruction field name  
     word fieldName = setPODFieldsDict.lookupOrDefault<word>("field", "null");
     

@@ -67,9 +67,7 @@ Foam::podInterface::podInterface
     timeEnd_(1),
     chunkNumber_(3),
     writePrecision_(9),
-    //    orientation_("horizontal"),
-    //averaging_("weighted"),
-    debug_(true),
+    debug_(false),
     times_(),
     scalarFormatterPtr_(NULL),
     vectorFormatterPtr_(NULL)
@@ -125,9 +123,6 @@ void Foam::podInterface::read(const dictionary& dict)
         dict.lookup("timeEnd") >> timeEnd_;
         dict.lookup("chunkNumber") >> chunkNumber_;
         dict.lookup("writePrecision") >> writePrecision_;
-        //dict.lookup("orientation") >> orientation_;
-        //dict.lookup("averaging") >> averaging_;
-
         debug_ = dict.lookupOrDefault("debug", false);
         
         if (resultName_ == "none")
@@ -197,37 +192,28 @@ void Foam::podInterface::write()
       // approaching to main task of the library
       if(Pstream::parRun())
         {
-          Info<<"Proper Orthogonal Decomposition library. Writing in parallel mode>>"<<nl
+          Pout<<"Proper Orthogonal Decomposition library."
+	      <<" Writing in parallel mode>>"<<nl
               <<"    Field:"<<fieldName_<<nl;
 
           //We have only one vector in domain usually
-          if(fieldName_!="U")
-            {
-              const scalarField& vf = obr_.lookupObject<scalarField>(fieldName_);        
-              int fieldSize = vf.size();
-        
-              //mapping cells file
-
-              writeMappingFile(Pstream::myProcNo(), fieldSize);
-          
-              int procChunk = chunkNumber_*(Pstream::myProcNo());
-
-              writeField(procChunk, vf, fieldName_);
-          
-              if(debug_)
-                {
-                  Pout<<"Chunk field size = " << fieldSize<<nl
-                      <<"Proc chunk = "<<procChunk<<nl
-                      <<"Proc ID = "<<Pstream::myProcNo()<<endl;
-                }
-            }
-          else
-            {
-              const volVectorField& field = obr_.lookupObject<volVectorField>(fieldName_);
+          if(fieldName_=="U")
+	    {
+              const volVectorField& field = 
+		obr_.lookupObject<volVectorField>(fieldName_);
               for( direction i=0; i<3; i++)
                 {
-                  Foam::word tmpName (fieldName_ + word(vector::componentNames[i]));
-                  const scalarField& vf = field.component(i)().internalField();        
+                  Foam::word tmpName (
+				      fieldName_ 
+				      + 
+				      word(vector::componentNames[i])
+				      );
+
+                  const volScalarField& 
+		    fieldComponent = field.component(i);
+		  const scalarField vf = 
+		    fieldComponent.internalField();
+
                   int fieldSize = vf.size();
        
                   //mapping cells file
@@ -245,38 +231,125 @@ void Foam::podInterface::write()
                           <<"Proc ID = "<<Pstream::myProcNo()<<endl;
                     }
                 }
+	    }
+	  else
+            {
+              const volScalarField& field 
+		= obr_.lookupObject<volScalarField>(fieldName_);
+
+	      const scalarField vf = 
+		field.internalField();
+
+	      int fieldSize = vf.size();
+        
+              //mapping cells file
+
+              writeMappingFile(Pstream::myProcNo(), fieldSize);
+          
+              int procChunk = chunkNumber_*(Pstream::myProcNo());
+
+              writeField(procChunk, vf, fieldName_);
+          
+              if(debug_)
+                {
+                  Pout<<"Chunk field size = " << fieldSize<<nl
+                      <<"Proc chunk = "<<procChunk<<nl
+                      <<"Proc ID = "<<Pstream::myProcNo()<<endl;
+                }
             };
         }
       else
         {
           Info<<"Proper Orthogonal Decomposition library>>"<<nl
               <<"    Field:"<<fieldName_<<nl;
-          if(fieldName_!="U")
-            { 
-              const scalarField& vf = obr_.lookupObject<scalarField>(fieldName_);        
-              
-              int chunkIndex = 0;
-
-              writeField(chunkIndex, vf, fieldName_);
-            }
-          else
+          if(fieldName_=="U")
             {
-              const volVectorField& field = obr_.lookupObject<volVectorField>(fieldName_);
+              const volVectorField& 
+		field = obr_.lookupObject<volVectorField>(fieldName_);
               for( direction i=0; i<vector::nComponents; i++)
                 {
-                  Foam::word tmpName (fieldName_ + word(vector::componentNames[i]));
-                  Info<<"Field name "<<tmpName;
-                  const scalarField& vf = field.component(i)().internalField();        
+                  Foam::word 
+		    tmpName (
+			     fieldName_ 
+			     + 
+			     word(vector::componentNames[i]));
+                  
+		  Info<<"    Component name "<<tmpName<<nl;
+                  const volScalarField& 
+		    fieldComponent = field.component(i);
+		  const scalarField vf = 
+		    fieldComponent.internalField();
 
                   int chunkIndex = 0;
 
                   writeField(chunkIndex, vf, tmpName);
-                  Info<<"FieldName changed = "<<fieldName_<<endl;
+                  Info<<"Component saved. "<<endl;
                 }
             }
+	  else
+            { 
+              const volScalarField& field 
+		= obr_.lookupObject<volScalarField>(fieldName_);
+
+	      const scalarField vf = 
+		field.internalField();
+
+              int chunkIndex = 0;
+
+              writeField(chunkIndex, vf, fieldName_);
+            };
         };
     }                         
 
+}
+
+void Foam::podInterface::writeField(int& chunkIndex, const scalarField& field, word& nameToWrite)
+{
+  int fieldSize = field.size();
+  int chunkSize = fieldSize/chunkNumber_;
+  int resultChunk = 0 + chunkIndex;
+  for(int Idx = 0; Idx < chunkNumber_ - 1; Idx++)
+    {
+      scalarField partToWrite =  
+        scalarField::subField(
+                              field, 
+                              chunkSize, 
+                              Idx*chunkSize
+                              );
+
+      resultChunk = Idx + chunkIndex;
+
+      if(debug_)
+        {
+          Pout<<"    Local Idx = "<< Idx<<nl
+              <<"    Chunked Size = "<< partToWrite.size()<<nl
+              <<"    Global Chunk = "<<resultChunk<<nl;                        }
+      
+      writeChunkedField( resultChunk, partToWrite, nameToWrite);
+    }
+
+  scalarField partToWrite =  
+    scalarField::subField(
+                          field, 
+                          fieldSize % chunkNumber_ + chunkSize, 
+                          chunkSize*(chunkNumber_-1)
+                          );
+
+  resultChunk = (chunkNumber_ - 1) + chunkIndex;
+
+  if(debug_)
+    {
+      Pout<<"    Local Idx = "<<"Last"<<nl                                
+          <<"    Chuncked Size = "<< partToWrite.size()<<nl
+          <<"    Global Chunk = "<<resultChunk<<nl;                
+    }
+
+  writeChunkedField(resultChunk, partToWrite, nameToWrite);
+
+  if(debug_)
+    {
+      Pout<<"    Component saved successfully.";
+    }
 }
 
 void Foam::podInterface::writeChunkedField(int& index, const scalarField& chunkedField, word& nameToWrite)
@@ -299,6 +372,7 @@ void Foam::podInterface::writeChunkedField(int& index, const scalarField& chunke
       );
   
   Foam::OFstream outputStream(outputFile);
+  
   outputStream.precision(writePrecision_);        
 
   scalarFormatterPtr_().write
@@ -308,50 +382,9 @@ void Foam::podInterface::writeChunkedField(int& index, const scalarField& chunke
      );
 
   Pout<<"    Export data file: "<<outputFile<<nl
-      <<"    Output data precision:"<<outputStream.precision()<<nl<<nl;
-
-}
-
-void Foam::podInterface::writeField(int& chunkIndex, const scalarField& field, word& nameToWrite)
-{
-  int chunkSize = field.size()/chunkNumber_;
-  int resultChunk = 0;
-  for(int Idx = 0; Idx < chunkNumber_ - 1; Idx++)
-    {
-      scalarField partToWrite =  
-        scalarField::subField(
-                              field, 
-                              chunkSize, 
-                              Idx*chunkSize
-                              );
-      if(debug_)
-        {
-          Pout<<"    Local Idx = "<< Idx<<nl
-              <<"    Local Size = "<< partToWrite.size()<<nl
-              <<"    Global Chunk = "<<resultChunk<<nl;                
-        }
-      
-      resultChunk = Idx + chunkIndex;
-
-      writeChunkedField( resultChunk, partToWrite, nameToWrite);
-    }
-
-  scalarField partToWrite =  
-    scalarField::subField(
-                          field, 
-                          field.size() % chunkNumber_ + chunkSize, 
-                          chunkSize*(chunkNumber_-1)
-                          );
-
-  resultChunk = (chunkNumber_ - 1) + chunkIndex;
-  writeChunkedField(resultChunk, partToWrite, nameToWrite);
-
-  if(debug_)
-    {
-      Pout<<"    Local Idx = "<<"Last"<<nl                                
-          <<"    Local Size = "<< partToWrite.size()<<nl
-          <<"    Global Chunk = "<<resultChunk<<nl;                
-    }
+      <<"    Output data precision:"<<outputStream.precision()
+      <<nl<<nl;
+  outputStream.endl();
 }
 
 void Foam::podInterface::writeMappingFile
@@ -389,18 +422,16 @@ void Foam::podInterface::writeMappingFile
       )
      );
 
-  //Pout<<" output"<<localCellProcAddr<<nl;
-
   for(int i = 0; i < fieldSize; i++)
     {
-      //Pout<<"    processor local cellI = "<<i<<nl<<
-      //  "    processor global globalCellI = "<<localCellProcAddr[i]<<nl;
       mappingFileStream<< localCellProcAddr[i];
       if (i != fieldSize - 1)
         {
           mappingFileStream<<nl;
         }
     }
+  
+  mappingFileStream.flush();
 }
 
 // ************************************************************************* //

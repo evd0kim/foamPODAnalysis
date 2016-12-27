@@ -36,7 +36,6 @@ Foam::rawSparkWriter<Type>::rawSparkWriter()
     podWriter<Type>()
 {}
 
-
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
 template<class Type>
