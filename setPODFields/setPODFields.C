@@ -29,7 +29,6 @@ Description
 #include "argList.H"
 #include "Time.H"
 #include "fvMesh.H"
-#include "fvCFD.H"
 #include "topoSetSource.H"
 #include "cellSet.H"
 #include "faceSet.H"
@@ -45,73 +44,21 @@ Description
 #include "ListOps.H"
 
 #include "transformGeometricField.H"
+#include "zeroGradientFvPatchFields.H"
 
 using namespace Foam;
 
-/*
-template<>
-Foam::label readValue(const string& line)
-  {
-    return readLabel(IStringStream(line)());
-  }
-
-template<>
-Foam::scalar readValue(const string& line)
+typedef struct settingsStruct
 {
-  return readScalar(IStringStream(line)());
-}
-
-template<class Type>
-Type readValue(const string& splitted)
-{
-        Type result;
-        
-        result =
-          readScalar(IStringStream(line)());
-
-        return result;
-}
-
-template<class Type>
-  DynamicList< Type > readRawFile
-(
-    const fileName& sourceFile
-)
-{
-  Foam::IFstream inputStream(sourceFile);
-              
-  Info<<"    Trying to read file: "<<nl
-      <<"    "<<inputStream.name()<<endl;
-
-  if (!inputStream.good())
-    {
-      FatalErrorIn
-        (
-         "setPODFields::readMode"
-         )
-        << "Cannot read file " << inputStream.name()
-        << exit(FatalError);
-    }
-  else{
-    Info<<"    OK. Read values"<<endl;
-    inputStream.defaultPrecision(16);
-  }
-
-  DynamicList< Type > values;
-              
-  while (inputStream.good())
-    {
-      string line;
-      inputStream.getLine(line);
-      
-      Type x = readValue(IStringStream(line)());
-      
-      values.append(x);     
-    }
-
-  return values;
-  }
-*/
+  word mode;
+  word vectorMode;
+  word relativeFlag;
+  scalar goalTime; 
+  int modesNumber;
+  word saveFlag; 
+  word timeFileName;
+  word modesFileName;
+};
 
 DynamicList< scalar > readRawFile
 (
@@ -264,13 +211,85 @@ DynamicList< scalar > readLineAndSplit
   return returnList;
 }
 
+void readPODSettings
+(
+ settingsStruct& PODSettings, 
+ const IOdictionary& settingsDict
+ )
+{
+    // reconstruction mode
+    PODSettings.mode = 
+      settingsDict.lookupOrDefault<word>("mode", "serial");
+    // option for vector reconstruction
+    PODSettings.vectorMode = 
+      settingsDict.lookupOrDefault<word>("vectorMode", "components");
+    // relative time switch. relative means that goal time is taken between first and last snapshots
+    PODSettings.relativeFlag = 
+      settingsDict.lookupOrDefault<word>("relativeTime", "true");
+    // the time we are reconstructing for
+    PODSettings.goalTime = 
+      settingsDict.lookupOrDefault("goalTime", 0.0);
+    // amount of modes we take for reconstruction   
+    PODSettings.modesNumber = 
+      settingsDict.lookupOrDefault("usingModes", 1);
+    // flag to save modes as fields   
+    PODSettings.saveFlag = 
+      settingsDict.lookupOrDefault<word>("saveModes", "false");
+    // Input for POD -- related files search
+    PODSettings.timeFileName = 
+      settingsDict.lookupOrDefault<word>("timeFile", "timeCoeffs.txt");
+    // 
+    PODSettings.modesFileName = 
+      settingsDict.lookupOrDefault<word>("modesFile", "mode*");
+}
+
+void readTimeCoefficients
+( 
+ const fileName& timeCoeffsFile,
+ List<DynamicList< scalar > >& timeCoeffsList,
+ char separator
+)
+{
+  Foam::IFstream timeCoeffStream
+    (
+     timeCoeffsFile
+      );
+
+  if ( !isFile(timeCoeffsFile) )
+    {
+      FatalErrorIn
+        (
+         "setPODFields::void readTimeCoefficients"
+         )
+        <<"    The time coefficients file is not found!"<<nl
+        <<"    file:"<<timeCoeffsFile<<nl
+        << exit(FatalError);
+    }
+
+  Info<<"    Time coefficents file has been found. "
+      <<"Take first " << timeCoeffsList.size()
+      <<" modes."<<endl;
+      
+  forAll(timeCoeffsList, modeIndex)
+    {
+      timeCoeffsList[modeIndex] = 
+	readLineAndSplit(timeCoeffStream, 
+			 separator);
+    };
+
+  Info<<"    Timesteps summary "<<timeCoeffsList[0].size()
+      <<"."<<nl<<endl;
+}
+
 template<class Type>
 bool reconstructCellFieldType
 (
     const word& fieldTypeDesc,
     const fvMesh& mesh,
+    const labelList& cellsMappingList,
     Istream& fieldValueStream,
-    const IOdictionary& settingsDict
+    const settingsStruct& PODSettings,
+    const fileName& caseDir
 )
 {
     typedef GeometricField<Type, fvPatchField, volMesh> fieldType;
@@ -282,34 +301,15 @@ bool reconstructCellFieldType
 
     // reconstruction field name, read from stream
     word fieldName(fieldValueStream);
-    
-    // reconstruction mode
-    word mode = 
-      settingsDict.lookupOrDefault<word>("mode", "serial");
 
-    // relative time switch. relative means that goal time is taken between first and last snapshots
-    word relativeFlag = 
-      settingsDict.lookupOrDefault<word>("relativeTime", "true");
+    word mode = PODSettings.mode;
+    word relativeFlag = PODSettings.relativeFlag;   
+    scalar goalTime = PODSettings.goalTime;
+    int modesNumber = PODSettings.modesNumber;
+    word saveFlag = PODSettings.saveFlag;
+    word timeFileName = PODSettings.timeFileName;
+    word modesFileName = PODSettings.modesFileName;
 
-    // the time we are reconstructing for
-    scalar goalTime = 
-      settingsDict.lookupOrDefault("goalTime", 0.0);
-
-    // amount of modes we take for reconstruction   
-    int modesNumber = 
-      settingsDict.lookupOrDefault("usingModes", 1);
-
-    // save data  switch. Manage to save modes in each own separate field
-    word saveFlag = 
-      settingsDict.lookupOrDefault<word>("saveModes", "false");
-
-    // Input for POD -- related files search
-    word timeFileName = 
-      settingsDict.lookupOrDefault<word>("timeFile", "timeCoeffs.txt");
-
-    // 
-    word modesFileName = 
-      settingsDict.lookupOrDefault<word>("modesFile", "mode*");
     wordRe modesMaskName (modesFileName);
 
     if (wordRe::isPattern(modesFileName))
@@ -320,6 +320,28 @@ bool reconstructCellFieldType
       {
 	modesMaskName.compile(wordRe::LITERAL);
       }
+   
+    //Set up file names
+    fileName inputModesDir
+      (
+       caseDir/"postProcessing"/"POD"/"modes"/fieldName
+       );
+
+    fileName inputMappingDir
+      (
+       caseDir/"postProcessing"/"POD"/"mapping"
+       );
+
+    fileName timeMappingFile
+      (
+       caseDir/"postProcessing"/"POD"/"mapping"/"timeMapping"
+       );
+
+    fileName timeCoeffsFile
+      (
+       inputModesDir/timeFileName
+       );
+    //  
     
     // Check the current time directory
     
@@ -346,47 +368,214 @@ bool reconstructCellFieldType
     // Check field exists
     if (fieldHeader.headerOk())
     {
-        Info<< "    Reconstructing internal values of "
-            << fieldHeader.headerClassName()
-            << " " << fieldName << endl;
+      Info<<nl
+          << "    Reconstructing internal values of "
+          << fieldHeader.headerClassName()
+          << " " << fieldName << endl;
 
         fieldType field(fieldHeader, mesh);
-
-        const Type& value = pTraits<Type>(fieldValueStream);
-        	
 	forAll(field, celli)
-        {
-	  field[celli] = value;
-        }
-       
-        forAll(field.boundaryField(), patchi)
-        {
-            field.boundaryField()[patchi] =
-                field.boundaryField()[patchi].patchInternalField();
-        }
+	  {
+	    field[celli] *= 0.0;
+	  }
 
-        if (!field.write())
+	// Final check for mapping file and interpolated field
+	if (cellsMappingList.size()!=field.size())
+	  {
+	    FatalErrorIn
+	      (
+	       "setPODFields::int main"
+	       )
+	      <<"The cells mapping list size is not equal to field size "<<nl
+	      <<"Mapping list size "<<cellsMappingList.size()<<nl
+	      <<"Field size "<<field.size()<<nl
+	      << exit(FatalError);
+	  };
+	Info<<"    Cells mapping: OK"<<nl<<endl;
+	List<DynamicList< scalar > > timeCoeffsList(modesNumber);
+	char sep = '\t';
+
+	readTimeCoefficients(timeCoeffsFile, timeCoeffsList, sep);
+
+        if(true)
+          {
+            Info<<"Time coefficients debug info: "<<nl
+                <<"\tfilename "<<timeCoeffsFile<<nl
+                <<"\tcoeffs list "<<nl
+                <<timeCoeffsList<<nl
+                <<endl;
+          };
+
+        //work on files
+        wordRe modesMaskName (modesFileName);
+        if (wordRe::isPattern(modesFileName))
+          {
+            modesMaskName.compile(wordRe::REGEXP);
+          }
+        else
+          {
+            modesMaskName.compile(wordRe::LITERAL);
+          }
+
+        Foam::SortableList<fileName> modeDirFileList
+          (
+           readDir(inputModesDir, fileName::FILE)
+           );
+        //Info<<"Read modes files list"<<modeDirFileList<<endl;
+        int modeIndex = 0;
+
+        forAll(modeDirFileList, i)
+          {
+            if(
+               ! modesMaskName.match( modeDirFileList[i].name() ) 
+               ||
+               modeIndex >= modesNumber
+               )
+              continue;
+            
+            std::ostringstream ostr;
+            ostr <<fieldName<<"_mode_"<<modeIndex;
+            std::string converted = ostr.str();                  
+            word modeName(converted);
+            //fileName modeFileName(modeName+".spark");
+            Info()<<nl<<"Source File: "<<modeDirFileList[i]<<endl;
+	    
+            Foam::IFstream inputStream(
+                                       inputModesDir
+                                       /
+                                       modeDirFileList[i]);
+            
+            Istream& modeStreamTest (inputStream);
+            
+            fieldType modeField
+              (
+               IOobject
+               (
+                modeName,
+                mesh.time().timeName(),
+                mesh,
+                IOobject::NO_READ,
+                IOobject::AUTO_WRITE
+                ),
+               mesh,
+               dimless,
+               zeroGradientFvPatchScalarField::typeName
+               );
+	    
+            forAll(modeField, celli)
+              {
+                label cellIndex = cellsMappingList[celli];
+                const Type &value = pTraits<Type>(modeStreamTest);
+                modeField[cellIndex] = value;
+              }
+	    
+            if(saveFlag == "true") 
+              {
+                Info<<"Saving mode "<<modeIndex << " into "
+                    <<mesh.time().timeName()<<nl<<endl;
+                modeField.write();
+              }
+            if (relativeFlag == "true")
+              {
+                int timePoint(goalTime);
+                forAll(field, celli)
+                  {
+                    field[celli] += 
+                      timeCoeffsList[modeIndex][timePoint]
+                      *
+                      modeField[celli];
+                  }
+                
+                int cellIndex = cellsMappingList[0];
+                Info()<<"Reconstruction time coeff = "
+                      <<timeCoeffsList[modeIndex][timePoint]<<nl
+                      <<"Mode value = "
+                      <<modeField[0]<<nl
+                      <<"Reconstructed value at point = "
+                      <<field[cellIndex]<<nl
+                      <<"Max reconstructed val = "
+                      <<max(field)<<endl;           
+              }
+            modeIndex++;
+          }
+        
+        //Info<<nl<<timeCoeffsList<<endl;
+        /*
+          readModesFromDir
+          (
+          mesh,
+          fieldTypeDesc,
+          fieldSize,
+          PODSettings,
+          cellsMappingList,
+          inputModesDir,
+          modesFileName,
+          timeCoeffsFile,
+          modesList,
+          timeCoeffsList
+          );
+        */
+	
+        //const Type& value = pTraits<Type>(modeStreamTest);
+        
+        /*	    
+        // interpolating using relative or absolute time
+        if (relativeFlag == "true")
         {
-            FatalErrorIn
-            (
-                "void reconstructCellFieldType"
-                "(const fvMesh& mesh, const labelList& selectedCells,"
-                "Istream& fieldValueStream)"
-            ) << "Failed writing field " << fieldName << endl;
+        int timePoint(goalTime);
+        forAll(modesList, modeIndex)
+        {
+        for (int i = 0; i<field.size(); i++)
+        {
+        label cellIndex = cellsMappingList[i];
+        internalValues[cellIndex] += 
+        timeCoeffsList[modeIndex][timePoint]
+        *modesList[modeIndex][i] ;
+        };
+	
+        int cellIndex = cellsMappingList[100];
+        Info()<<"Reconstruction time coeff = "
+        <<timeCoeffsList[modeIndex][timePoint]<<nl
+        <<"Mode value = "
+        <<modesList[modeIndex][100]<<nl
+        <<"Pressure value at point = "
+        <<internalValues[cellIndex]<<nl
+        <<"Max reconstructed val = "
+        <<max(internalValues)<<endl;           
         }
+        }
+        else
+        {
+        }                 
+        */
+        forAll(field.boundaryField(), patchi)
+          {
+            field.boundaryField()[patchi] =
+              field.boundaryField()[patchi].patchInternalField();
+          }
+        
+        if (!field.write())
+          {
+            FatalErrorIn
+              (
+               "void reconstructCellFieldType"
+               "(const fvMesh& mesh, const labelList& selectedCells,"
+               "Istream& fieldValueStream)"
+               ) << "Failed writing field " << fieldName << endl;
+          }
     }
     else
-    {
+      {
         WarningIn
-        (
-            "void reconstructCellFieldType"
-            "(const fvMesh& mesh, const labelList& selectedCells,"
-            "Istream& fieldValueStream)"
-        ) << "Field " << fieldName << " not found" << endl;
-
+          (
+           "void reconstructCellFieldType"
+           "(const fvMesh& mesh, const labelList& selectedCells,"
+           "Istream& fieldValueStream)"
+           ) << "Field " << fieldName << " not found" << endl;
+        
         // Consume value
         (void)pTraits<Type>(fieldValueStream);
-    }
+      }
 
     return true;
 }
@@ -407,14 +596,21 @@ public:
     class iNew
     {
       const fvMesh& mesh_;
-      const IOdictionary& dict_;
+      const labelList& mappingCells_;
+      const settingsStruct& settings_;
+      const fileName& dir_;
 
     public:
 
-      iNew(const fvMesh& mesh, const IOdictionary& dict)
+      iNew(const fvMesh& mesh, 
+	   const labelList& mappingCells,
+	   const settingsStruct& settings, 
+	   const fileName& dir)
         :
 	mesh_(mesh),
-	dict_(dict)
+	mappingCells_(mappingCells),
+	settings_(settings),
+	dir_(dir)
       {}
 
         autoPtr<reconstructCellField> operator()(Istream& fieldValues) const
@@ -425,9 +621,9 @@ public:
             (
 	     !(
 	       reconstructCellFieldType<scalar>
-	       (fieldType, mesh_, fieldValues, dict_)
+	       (fieldType, mesh_, mappingCells_, fieldValues, settings_, dir_)
 	       || reconstructCellFieldType<vector>
-	       (fieldType, mesh_, fieldValues, dict_)
+	       (fieldType, mesh_, mappingCells_, fieldValues, settings_, dir_)
 	       )
 	     )
 	      {
@@ -440,132 +636,58 @@ public:
         }
     };
 };
-  
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-int main(int argc, char *argv[])
+labelList getCellsMappingList
+(
+ const settingsStruct& PODSettings,
+ const fvMesh& mesh,
+ const IOdictionary& settingsDict,
+ const fileName& caseDir
+)
 {
-    #include "addRegionOption.H"
-    #include "setRootCase.H"
-    #include "createTime.H"
-    #include "createMesh.H"
-  //#include "createNamedMesh.H"
+    DynamicList< label > cellsMappingList;
 
-    Info<< "Reading setPODFieldsDict\n" << endl;
+    word mode = PODSettings.mode;
+    word relativeFlag = PODSettings.relativeFlag;   
+    int modesNumber = PODSettings.modesNumber;
+    word timeFileName = PODSettings.timeFileName;
+    word modesFileName = PODSettings.modesFileName;
 
-    //Create and initialize dictionary
-
-    IOdictionary setPODFieldsDict
-    (
-        IOobject
-        (
-            "setPODFieldsDict",
-            runTime.system(),
-            mesh,
-            IOobject::MUST_READ_IF_MODIFIED,
-            IOobject::NO_WRITE
-        )
-    );
-
-    if (setPODFieldsDict.found("reconstructFields"))
-      {
-        Info<< "Reconstructing field values" << endl;       
-	wordReList fieldNames;
-	setPODFieldsDict.lookup("reconstructFields") >> fieldNames;
-      }
-
-    /*
-    //read default values
-    if (setPODFieldsDict.found("defaultFieldValues"))
-    {
-        Info<< "Setting field default values" << endl;
-        PtrList<setCellField> defaultFieldValues
-        (
-            setPODFieldsDict.lookup("defaultFieldValues"),
-            setCellField::iNew(mesh, labelList(mesh.nCells()))
-        );
-        Info<< endl;
-    }
-    //
-    */
-    // reconstruction field name  
-    word fieldName = setPODFieldsDict.lookupOrDefault<word>("field", "null");
-    
-    // reconstruction mode
-    word mode = setPODFieldsDict.lookupOrDefault<word>("mode", "serial");
-
-    // relative time switch. relative means that goal time is taken between first and last snapshots
-    word relativeFlag = setPODFieldsDict.lookupOrDefault<word>("relativeTime", "true");
-
-    // the time we are reconstructing for
-    scalar goalTime = setPODFieldsDict.lookupOrDefault("goalTime", 0.0);
-
-    // amount of modes we take for reconstruction   
-    int modesNumber = setPODFieldsDict.lookupOrDefault("usingModes", 0);
-
-    // save data  switch. Manage to save modes in each own separate field
-    word saveFlag = setPODFieldsDict.lookupOrDefault<word>("saveModes", "false");
-
-    // Input for POD -- related files search
-    word timeFileName = setPODFieldsDict.lookupOrDefault<word>("timeFile", "timeCoeffs.txt");
-
-    // 
-    word modesFileName = setPODFieldsDict.lookupOrDefault<word>("modesFile", "mode*");
     wordRe modesMaskName (modesFileName);
 
     if (wordRe::isPattern(modesFileName))
       {
-        modesMaskName.compile(wordRe::REGEXP);
+	modesMaskName.compile(wordRe::REGEXP);
       }
     else
       {
-        modesMaskName.compile(wordRe::LITERAL);
+	modesMaskName.compile(wordRe::LITERAL);
       }
-    
-    //int modesNumber(readInt(setPODFieldsDict.lookup("usingModes")));
 
     Info<< "Setting field values using Proper Orthogonal Decomposition data" << endl;
     
-    volScalarField fieldFromTime
-      (
-        IOobject
-        (
-            fieldName,
-            runTime.timeName(),
-            mesh,
-            IOobject::MUST_READ,
-            IOobject::AUTO_WRITE
-        ),
-        mesh
-     );
-
-    Foam::scalarField& scalarField = fieldFromTime.internalField();
-
+    //Set up file names
     fileName inputModesDir
-    (
-     runTime.path()/"postProcessing"/"POD"/"modes"
-     );
+      (
+       caseDir/"postProcessing"/"POD"/"modes"
+       );
 
     fileName inputMappingDir
       (
-       runTime.path()/"postProcessing"/"POD"/"mapping"
-     );
+       caseDir/"postProcessing"/"POD"/"mapping"
+       );
 
     fileName timeMappingFile
       (
-       runTime.path()/"postProcessing"/"POD"/"mapping"/"timeMapping"
+       caseDir/"postProcessing"/"POD"/"mapping"/"timeMapping"
        );
 
-    fileName timeCoeffsFile
-        (
-        inputModesDir/timeFileName
-        );
-   
+    //
+    //Construction of the mapping list for cells (in parallel mode)
     // Pre-checks
     if ( modesNumber == 0
          || !isDir(inputModesDir)
          || ( relativeFlag == "false" && !isFile(timeMappingFile) ) 
-         || !isFile(timeCoeffsFile)
         )
     {
       if(modesNumber == 0)
@@ -583,255 +705,147 @@ int main(int argc, char *argv[])
           Info()<<nl<<"    The absolute time mapping file is not found!"
                 <<endl;
         }
-        else if ( !isFile(timeCoeffsFile) )
-        {
-          Info()<<nl<<"    The time coefficients file is not found!"
-                <<endl;
-
-        }
       else
         {
           Info()<<nl<<"Error!"<<endl;
         }
+      FatalErrorIn
+	(
+	 "setPODFields::int main()"
+	 )
+	<<"Invalid reconstruction options"<<nl
+	<< exit(FatalError);
     }
-    else //everything is OK
-        {        
-          // Read directory entries into a list. Order makes sense
+    // Read directory entries into a list. Order makes sense
 
-          Foam::SortableList<fileName> modeEntries
-            (
-             readDir(inputModesDir, fileName::FILE)
-             );
+    Foam::SortableList<fileName> modeEntries
+      (
+       readDir(inputModesDir, fileName::FILE)
+       );
 
-          Info<<"    Found "<<modeEntries.size()<<" files in modes directory"<<endl;
+    Info<<"    Found "
+	<<modeEntries.size()
+	<<" files in modes directory"<<endl;
 
-          // Create mapping list
-          DynamicList< label > cellsMappingList;
+    if(mode == "parallel")
+      {
+	// Read mapping entries
+	// The mapping sequence should save order of processors
 
-          if(mode == "parallel")
-            {
-              // Read mapping entries
-              // The mapping sequence should save order of processors
-
-              Foam::SortableList<fileName> mapEntries
-                ( 
-                 readDir(inputMappingDir, fileName::FILE) 
-                  );
+	Foam::SortableList<fileName> mapEntries
+	  ( 
+	   readDir(inputMappingDir, fileName::FILE) 
+	    );
               
-              Info<<"    Proceed in parallel mode. "
-                  <<"Found "<<mapEntries.size()<<" files in mapping directory"
-                  <<nl<<endl;
+	Info<<"    Proceed in parallel mode. "
+	    <<"Found "<<mapEntries.size()<<" files in mapping directory"
+	    <<nl<<endl;
                            
-              // Gathering cell mapping info from files
-              // set up mask for mapping files
+	// Gathering cell mapping info from files
+	// set up mask for mapping files
               
-              wordRe mapFileMask ("mapProc.*");
-              mapFileMask.compile(wordRe::REGEXP);
+	wordRe mapFileMask ("mapProc.*");
+	mapFileMask.compile(wordRe::REGEXP);
               
-              forAll(mapEntries, i)
-                {
-                  word tmpFileName(mapEntries[i].name(1));
-                  // Processor mapping and time mapping are in the same dir so elaborate them
-                  // in the same part of code
-                  if(mapFileMask.match(tmpFileName))
-                    {
-                      DynamicList< label > tmpList;
-                      tmpList = readMappingFile(
-                                                inputMappingDir
-                                                /
-                                                mapEntries[i]
-                                                );
-                      cellsMappingList.append(tmpList);
-                    }
-                  else if (relativeFlag == "false")
-                    {
-                      if(timeMappingFile == fileName(tmpFileName))
-                        {
-                          DynamicList< scalar > snapshotTimes;
-                          
-                          snapshotTimes = readRawFile(timeMappingFile);
-                        }
-                    }
-                }
-            }
-          else if (mode == "serial")
-            {
-              for (int i = 0; i<mesh.nCells(); i++)
-                {
-                  cellsMappingList.append(i);
-                }
-            }
-          else
-            {
-              FatalErrorIn
-                (
-                 "setPODFields::int main"
-                 )
-                <<"Unknown mode for reconstruction. Use serial or parallel mode "<<nl
-                << exit(FatalError);
-            }
-
-          // Final check for mapping file and interpolated field
-          if (cellsMappingList.size()!=scalarField.size())
-            {
-              FatalErrorIn
-                (
-                 "setPODFields::int main"
-                 )
-                <<"The cells mapping list size is not equal to field size "<<nl
-                <<"Mapping list size "<<cellsMappingList.size()<<nl
-                <<"Field size "<<scalarField.size()<<nl
-                << exit(FatalError);
-            }
-          else{
-            Info<<"    Cells mapping: OK"
-                <<nl<<endl;
-          }
-          //-
-
-          // Working with modes
-          List<DynamicList< scalar > > modesList(modesNumber);
-          List<DynamicList< scalar > > timeCoeffsList(modesNumber);
-          int foundModes(0);
-
-          forAll(modeEntries, i)
-            {
-              word tmpFileName(modeEntries[i].name(1));
-
-              if(modesMaskName.match( modeEntries[i].name() ) && foundModes<modesNumber)
-                {                  
-                  DynamicList< scalar > values;
-                  
-                  values = readRawFile(
-                                       inputModesDir
-                                       /
-                                       modeEntries[i]
-                                       );
-                  
-                  if(values.size()==scalarField.size())
-                    {                          
-                      Info<<"    Mode values: OK"
-                          <<"    Adding mode "<<i<<nl<<endl;
-                     
-                      modesList[foundModes] =  values;
-                    }
-                  else
-                    {
-                      FatalErrorIn
-                        (
-                         "setPODFields::int main"
-                         )
-                        <<"    Problematic source file >> "<<nl
-                        <<"         File size "<<values.size()<<nl
-                        <<"         Field size "<<scalarField.size()<<nl
-                        << exit(FatalError);
-                    }
-                  foundModes++;
-                }
-              else if (modeEntries[i].name() == timeCoeffsFile.name()) 
-                {
-                  Info<<nl<<"    Time coefficents file has been found. "
-                      <<"Take first " << timeCoeffsList.size()<<" modes "<<nl<<endl;
-
-                  char separator = '\t';
-
-                  Foam::IFstream timeCoeffStream( inputModesDir
-                                                  /
-                                                  modeEntries[i].name()
-                                                  );
-                  
-                  forAll(timeCoeffsList, modeIndex)
-                    {
-                      timeCoeffsList[modeIndex] = readLineAndSplit(timeCoeffStream, separator);
-                      //Info<<"Values "<<timeCoeffsList[modeIndex]<<endl;
-                    }
-                }                
-              else
-                {
-                }
-            }
-          
-          // saving modes of interest into separated fields to vizualize them all
-          if (saveFlag == "true")
-            {
-              forAll(modesList, modeIndex)
-                {
-                  std::ostringstream ostr;
-                  ostr <<"mode"<<modeIndex;
-                  std::string converted = ostr.str();
-                  
-                  word modeName(converted);
-                  
-                  Foam::scalarField tmpField( modesList[modeIndex] );
-
-                  volScalarField modeField
-                    (
-                     IOobject
-                     (
-                      modeName,
-                      runTime.timeName(),
-                      mesh,
-                      IOobject::NO_READ,
-                      IOobject::AUTO_WRITE
-                      ),
-                     mesh,
-                     dimless,                  
-                     zeroGradientFvPatchScalarField::typeName
-                     );
-
-                  Foam::scalarField& modeScalars = modeField.internalField();                  
-                                    
-                  forAll(tmpField, idx)
-                    {
-                      label cellIndex = cellsMappingList[idx];
-                      modeScalars[cellIndex] = tmpField[idx];
-                    };                
-
-                  modeField.write();
-                }
-            }
-          //-
-
-          //Info<<"    List time coeffs = "
-          //    <<timeCoeffsList<<endl;
-	  forAll(scalarField, idx)
+	forAll(mapEntries, i)
 	  {
-	    scalarField[idx] = 0;
-	    };
+	    word tmpFileName(mapEntries[i].name(1));
+	    // Processor mapping and time mapping are in the same dir so elaborate them
+	    // in the same part of code
+	    if(mapFileMask.match(tmpFileName))
+	      {
+		DynamicList< label > tmpList;
+		tmpList = readMappingFile(
+					  inputMappingDir
+					  /
+					  mapEntries[i]
+					  );
+		cellsMappingList.append(tmpList);
+	      }
+	    else if (relativeFlag == "false")
+	      {
+		if(timeMappingFile == fileName(tmpFileName))
+		  {
+		    DynamicList< scalar > snapshotTimes;
+                          
+		    snapshotTimes = readRawFile(timeMappingFile);
+		  }
+	      }
+	  }
+      }
+    else if (mode == "serial")
+      {
+	for (int i = 0; i<mesh.nCells(); i++)
+	  {
+	    cellsMappingList.append(i);
+	  }
+      }
+    else
+      {
+	FatalErrorIn
+	  (
+	   "setPODFields::int main"
+	   )
+	  <<"Unknown mode for reconstruction. "
+	  <<"Use serial or parallel mode "<<nl
+	  << exit(FatalError);
+      }
 
-          // interpolating using relative or absolute time
-          if (relativeFlag == "true")
-            {
-              int timePoint(goalTime);
-              forAll(modesList, modeIndex)
-                {
-                  for (int i = 0; i<scalarField.size(); i++)
-                    {
-                      label cellIndex = cellsMappingList[i];
-                      scalarField[cellIndex] += 
-                        timeCoeffsList[modeIndex][timePoint]
-                        *modesList[modeIndex][i] ;
-                    };
+    return cellsMappingList;
+}
 
-                  int cellIndex = cellsMappingList[100];
-                  Info()<<"Reconstruction time coeff = "
-                        <<timeCoeffsList[modeIndex][timePoint]<<nl
-                        <<"Mode value = "
-                        <<modesList[modeIndex][100]<<nl
-                        <<"Pressure value at point = "
-                        <<scalarField[cellIndex]<<nl
-                    	<<"Max reconstructed val = "
-                    	<<max(scalarField)<<endl;           
-                }
-            }
-          else
-            {
-            }                 
-          // -
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-          fieldFromTime.write();      
-        };
+int main(int argc, char *argv[])
+{
+    #include "addRegionOption.H"
+    #include "setRootCase.H"
+    #include "createTime.H"
+    #include "createNamedMesh.H"
 
+    Info<< "Reading setPODFieldsDict\n" << endl;
+
+    IOdictionary setPODFieldsDict
+    (
+        IOobject
+        (
+            "setPODFieldsDict",
+            runTime.system(),
+            mesh,
+            IOobject::MUST_READ_IF_MODIFIED,
+            IOobject::NO_WRITE
+        )
+     );
+
+    fileName caseDir = runTime.path();
+    settingsStruct globalPODSettings;
+
+    readPODSettings(globalPODSettings, setPODFieldsDict);
+
+    // Create mapping list
+    labelList cellsMappingList = getCellsMappingList
+      (globalPODSettings, mesh, setPODFieldsDict, caseDir);
+
+    //now we got cellMappingList 
+
+    if (setPODFieldsDict.found("reconstructFields"))
+      {
+        Info<< "Reconstructing field values" << endl;
+        
+	PtrList<reconstructCellField> reconstructedFieldValues
+	  (
+	   setPODFieldsDict.lookup("reconstructFields"),
+	   reconstructCellField::iNew
+	   (
+	    mesh, 
+	    cellsMappingList, 
+	    globalPODSettings, 
+	    caseDir
+	    )
+	   );
+        Info<< endl;
+      }
+    
     Info<< "\nEnd\n" << endl;
 
     return 0;
