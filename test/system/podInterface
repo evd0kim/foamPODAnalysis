@@ -1,0 +1,99 @@
+podInterface_p
+{
+    type            podInterface;
+    // Where to load it from (if not already in solver)
+    functionObjectLibs ("libPODAnalysis.so");
+
+    debug           false;
+
+    outputControl   outputTime; //timeStep;
+
+    outputInterval  1;
+
+    fieldName p;
+
+    resultName pMode;
+
+    timeStart 0.1;
+
+    timeEnd  0.2;
+
+    chunkNumber 3;
+
+    writePrecision 16;
+}
+
+podInterface_U
+{
+    type            podInterface;
+    // Where to load it from (if not already in solver)
+    functionObjectLibs ("libPODAnalysis.so");
+
+    debug              false;
+
+    outputControl   outputTime; //timeStep;
+
+    outputInterval  1;
+
+    fieldName U;
+
+    resultName UMode;
+
+    timeStart 0.1;
+
+    timeEnd  0.2;
+
+    chunkNumber 3;
+
+    writePrecision 16;
+}
+
+podInterface_k
+{
+    type            podInterface;
+    // Where to load it from (if not already in solver)
+    functionObjectLibs ("libPODAnalysis.so");
+
+    debug              false;
+
+    outputControl   outputTime; //timeStep;
+
+    outputInterval  1;
+
+    fieldName k;
+
+    resultName kMode;
+
+    timeStart 0.1;
+
+    timeEnd  0.2;
+
+    chunkNumber 3;
+
+    writePrecision 16;
+}
+
+podInterface_nuе
+{
+    type            podInterface;
+    // Where to load it from (if not already in solver)
+    functionObjectLibs ("libPODAnalysis.so");
+
+    debug              false;
+
+    outputControl   outputTime; //timeStep;
+
+    outputInterval  1;
+
+    fieldName nut;
+
+    resultName nutMode;
+
+    timeStart 0.1;
+
+    timeEnd  0.2;
+
+    chunkNumber 3;
+
+    writePrecision 16;
+}

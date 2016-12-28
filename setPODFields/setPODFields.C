@@ -278,7 +278,7 @@ void readTimeCoefficients
     };
 
   Info<<"    Timesteps summary "<<timeCoeffsList[0].size()
-      <<"."<<nl<<endl;
+      <<"."<<endl;
 }
 
 template<class Type>
@@ -343,8 +343,7 @@ bool reconstructCellFieldType
        );
     //  
     
-    // Check the current time directory
-    
+    // Check the current time directory   
     IOobject fieldHeader
     (
         fieldName,
@@ -391,20 +390,12 @@ bool reconstructCellFieldType
 	      <<"Field size "<<field.size()<<nl
 	      << exit(FatalError);
 	  };
+
 	Info<<"    Cells mapping: OK"<<nl<<endl;
 	List<DynamicList< scalar > > timeCoeffsList(modesNumber);
 	char sep = '\t';
 
 	readTimeCoefficients(timeCoeffsFile, timeCoeffsList, sep);
-
-        if(true)
-          {
-            Info<<"Time coefficients debug info: "<<nl
-                <<"\tfilename "<<timeCoeffsFile<<nl
-                <<"\tcoeffs list "<<nl
-                <<timeCoeffsList<<nl
-                <<endl;
-          };
 
         //work on files
         wordRe modesMaskName (modesFileName);
@@ -421,7 +412,7 @@ bool reconstructCellFieldType
           (
            readDir(inputModesDir, fileName::FILE)
            );
-        //Info<<"Read modes files list"<<modeDirFileList<<endl;
+
         int modeIndex = 0;
 
         forAll(modeDirFileList, i)
@@ -437,8 +428,8 @@ bool reconstructCellFieldType
             ostr <<fieldName<<"_mode_"<<modeIndex;
             std::string converted = ostr.str();                  
             word modeName(converted);
-            //fileName modeFileName(modeName+".spark");
-            Info()<<nl<<"Source File: "<<modeDirFileList[i]<<endl;
+
+            Info<<nl<<"Source File: "<<modeDirFileList[i]<<endl;
 	    
             Foam::IFstream inputStream(
                                        inputModesDir
@@ -487,7 +478,7 @@ bool reconstructCellFieldType
                   }
                 
                 int cellIndex = cellsMappingList[0];
-                Info()<<"Reconstruction time coeff = "
+                Info<<"Reconstruction time coeff = "
                       <<timeCoeffsList[modeIndex][timePoint]<<nl
                       <<"Mode value = "
                       <<modeField[0]<<nl
@@ -498,56 +489,7 @@ bool reconstructCellFieldType
               }
             modeIndex++;
           }
-        
-        //Info<<nl<<timeCoeffsList<<endl;
-        /*
-          readModesFromDir
-          (
-          mesh,
-          fieldTypeDesc,
-          fieldSize,
-          PODSettings,
-          cellsMappingList,
-          inputModesDir,
-          modesFileName,
-          timeCoeffsFile,
-          modesList,
-          timeCoeffsList
-          );
-        */
-	
-        //const Type& value = pTraits<Type>(modeStreamTest);
-        
-        /*	    
-        // interpolating using relative or absolute time
-        if (relativeFlag == "true")
-        {
-        int timePoint(goalTime);
-        forAll(modesList, modeIndex)
-        {
-        for (int i = 0; i<field.size(); i++)
-        {
-        label cellIndex = cellsMappingList[i];
-        internalValues[cellIndex] += 
-        timeCoeffsList[modeIndex][timePoint]
-        *modesList[modeIndex][i] ;
-        };
-	
-        int cellIndex = cellsMappingList[100];
-        Info()<<"Reconstruction time coeff = "
-        <<timeCoeffsList[modeIndex][timePoint]<<nl
-        <<"Mode value = "
-        <<modesList[modeIndex][100]<<nl
-        <<"Pressure value at point = "
-        <<internalValues[cellIndex]<<nl
-        <<"Max reconstructed val = "
-        <<max(internalValues)<<endl;           
-        }
-        }
-        else
-        {
-        }                 
-        */
+
         forAll(field.boundaryField(), patchi)
           {
             field.boundaryField()[patchi] =
@@ -731,14 +673,14 @@ labelList getCellsMappingList
       {
 	// Read mapping entries
 	// The mapping sequence should save order of processors
-
 	Foam::SortableList<fileName> mapEntries
 	  ( 
 	   readDir(inputMappingDir, fileName::FILE) 
 	    );
               
 	Info<<"    Proceed in parallel mode. "
-	    <<"Found "<<mapEntries.size()<<" files in mapping directory"
+	    <<"Found "<<mapEntries.size()
+	    <<" files in mapping directory"
 	    <<nl<<endl;
                            
 	// Gathering cell mapping info from files
@@ -766,8 +708,7 @@ labelList getCellsMappingList
 	      {
 		if(timeMappingFile == fileName(tmpFileName))
 		  {
-		    DynamicList< scalar > snapshotTimes;
-                          
+		    DynamicList< scalar > snapshotTimes; 
 		    snapshotTimes = readRawFile(timeMappingFile);
 		  }
 	      }
@@ -843,13 +784,11 @@ int main(int argc, char *argv[])
 	    caseDir
 	    )
 	   );
-        Info<< endl;
       }
     
     Info<< "\nEnd\n" << endl;
 
     return 0;
 }
-
 
 // ************************************************************************* //

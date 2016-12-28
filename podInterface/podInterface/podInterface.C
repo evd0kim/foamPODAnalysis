@@ -189,13 +189,12 @@ void Foam::podInterface::write()
         }
       //-
 
+      Info<<"Proper Orthogonal Decomposition library inteface"<<nl<<nl
+	  <<"    Field:"<<fieldName_<<nl;
+      
       // approaching to main task of the library
       if(Pstream::parRun())
         {
-          Pout<<"Proper Orthogonal Decomposition library."
-	      <<" Writing in parallel mode>>"<<nl
-              <<"    Field:"<<fieldName_<<nl;
-
           //We have only one vector in domain usually
           if(fieldName_=="U")
 	    {
@@ -208,7 +207,7 @@ void Foam::podInterface::write()
 				      + 
 				      word(vector::componentNames[i])
 				      );
-
+		  Info<<"    Component name "<<tmpName<<nl;
                   const volScalarField& 
 		    fieldComponent = field.component(i);
 		  const scalarField vf = 
@@ -257,11 +256,10 @@ void Foam::podInterface::write()
                       <<"Proc ID = "<<Pstream::myProcNo()<<endl;
                 }
             };
+	  Info<<"    Field saved."<<nl<<nl;
         }
       else
         {
-          Info<<"Proper Orthogonal Decomposition library>>"<<nl
-              <<"    Field:"<<fieldName_<<nl;
           if(fieldName_=="U")
             {
               const volVectorField& 
@@ -283,7 +281,7 @@ void Foam::podInterface::write()
                   int chunkIndex = 0;
 
                   writeField(chunkIndex, vf, tmpName);
-                  Info<<"Component saved. "<<endl;
+                  Info<<"    Component saved. "<<endl;
                 }
             }
 	  else
@@ -298,6 +296,7 @@ void Foam::podInterface::write()
 
               writeField(chunkIndex, vf, fieldName_);
             };
+	  Info<<"    Field saved."<<nl<<nl;
         };
     }                         
 
@@ -345,11 +344,6 @@ void Foam::podInterface::writeField(int& chunkIndex, const scalarField& field, w
     }
 
   writeChunkedField(resultChunk, partToWrite, nameToWrite);
-
-  if(debug_)
-    {
-      Pout<<"    Component saved successfully.";
-    }
 }
 
 void Foam::podInterface::writeChunkedField(int& index, const scalarField& chunkedField, word& nameToWrite)
@@ -382,8 +376,7 @@ void Foam::podInterface::writeChunkedField(int& index, const scalarField& chunke
      );
 
   Pout<<"    Export data file: "<<outputFile<<nl
-      <<"    Output data precision:"<<outputStream.precision()
-      <<nl<<nl;
+      <<"    Output data precision:"<<outputStream.precision()<<nl;
   outputStream.endl();
 }
 
