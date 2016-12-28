@@ -20,6 +20,6 @@ wmake
 
 ```
 
-If you don't have Git installed, you can use the ZIP option shown in the project page: https://github.com/wyldckat/reconstruct-interpolate-fields
+If you don't have Git installed, you can use the ZIP option shown in the project page: https://github.com/engenegr/foamPODAnalysis
 
-The reconstructFromComponents utility was developed using code has been written by Bruno Santos (wyldckat@github working at [blueCAPE Lda](http://www.bluecape.com.pt)).
+The reconstructFromComponents utility was developed using code (https://github.com/wyldckat/reconstruct-interpolate-fields) has been written by Bruno Santos (wyldckat@github working at [blueCAPE Lda](http://www.bluecape.com.pt)).
