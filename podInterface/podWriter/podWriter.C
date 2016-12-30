@@ -80,10 +80,10 @@ void Foam::podWriter<Type>::writeTable
     forAll(values, listItem)
     {
         write(values[listItem], os);
-        if (values[listItem] != values.last())
+	/*        if (values[listItem] != values.last())
           {
             os<<nl;
-          }
+	    }*/
     }
 }
 
