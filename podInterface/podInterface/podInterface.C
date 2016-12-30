@@ -365,18 +365,29 @@ void Foam::podInterface::writeChunkedField(int& index, const scalarField& chunke
       )
       );
   
-  Foam::OFstream outputStream(outputFile);
+  //Foam::OFstream outputStream(outputFile);
+
+  std::ofstream outputStream(outputFile.c_str());
   
-  outputStream.precision(writePrecision_);        
+  //outputStream<< "DATASET UNSTRUCTURED_GRID" << std::endl;
 
-  scalarFormatterPtr_().write
-    (
-     scalarValues,
-     outputStream
-     );
+  forAll(chunkedField, i)
+    {
+      outputStream<< chunkedField[i];
+      if(chunkedField[i] == chunkedField.last()) break; 
+      outputStream<< std::endl;  
+    }
 
-  Pout<<"    Export data file: "<<outputFile<<nl
-      <<"    Output data precision:"<<outputStream.precision()<<nl;
+  //outputStream.precision(writePrecision_);        
+
+  //scalarFormatterPtr_().write
+  //  (
+  //   scalarValues,
+  //   outputStream
+  //   );
+
+  //Pout<<"    Export data file: "<<outputFile<<nl
+  //    <<"    Output data precision:"<<outputStream.precision()<<nl;
   
   outputStream.flush();
 }
