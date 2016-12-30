@@ -87,7 +87,6 @@ void Foam::podWriter<Type>::writeTable
     }
 }
 
-
 template<class Type>
 void Foam::podWriter<Type>::writeTable
 (
@@ -149,6 +148,10 @@ Foam::Ostream& Foam::podWriter<Type>::write
     Ostream& os
 ) const
 {
+  if (value == 0) 
+  {
+    return os << value <<endl;    
+  }
   return os << value;
 }
 

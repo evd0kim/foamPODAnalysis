@@ -149,7 +149,6 @@ void Foam::podInterface::execute()
 
 }
 
-
 void Foam::podInterface::end()
 {
      if (active_)
@@ -166,7 +165,8 @@ void Foam::podInterface::end()
           forAll(times_, idx)
             {
               mapTimesFile<<times_[idx]<<nl;
-            }
+            };
+	  mapTimesFile.flush();
         }
      }
 }
@@ -343,7 +343,7 @@ void Foam::podInterface::writeField(int& chunkIndex, const scalarField& field, w
           <<"    Global Chunk = "<<resultChunk<<nl;                
     }
 
-  writeChunkedField(resultChunk, partToWrite, nameToWrite);
+writeChunkedField(resultChunk, partToWrite, nameToWrite);
 }
 
 void Foam::podInterface::writeChunkedField(int& index, const scalarField& chunkedField, word& nameToWrite)
@@ -377,7 +377,8 @@ void Foam::podInterface::writeChunkedField(int& index, const scalarField& chunke
 
   Pout<<"    Export data file: "<<outputFile<<nl
       <<"    Output data precision:"<<outputStream.precision()<<nl;
-  outputStream.endl();
+  
+  outputStream.flush();
 }
 
 void Foam::podInterface::writeMappingFile

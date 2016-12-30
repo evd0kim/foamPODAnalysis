@@ -42,7 +42,6 @@ template<class Type>
 Foam::rawSparkWriter<Type>::~rawSparkWriter()
 {}
 
-
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
@@ -90,7 +89,6 @@ void Foam::rawSparkWriter<Type>::write
  Ostream& os
 ) const
 {  
-
 }
 
 template<class Type>
@@ -103,7 +101,6 @@ void Foam::rawSparkWriter<Type>::write
  Ostream& os
 ) const
 {
-
 }
 
 // ************************************************************************* //
