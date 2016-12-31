@@ -325,6 +325,7 @@ void Foam::podInterface::writeField(int& chunkIndex, const scalarField& field, w
               <<"    Global Chunk = "<<resultChunk<<nl;                        }
       
       writeChunkedField( resultChunk, partToWrite, nameToWrite);
+
     }
 
   scalarField partToWrite =  
@@ -350,44 +351,27 @@ void Foam::podInterface::writeChunkedField(int& index, const scalarField& chunke
 {
   scalar currentTime = obr_.time().value();
 
-  List<const scalarField*> scalarValues(1);
+  std::ostringstream ostr;
+  ostr <<"raw_"<<nameToWrite
+       <<"_"<<currentTime
+       <<"_"<< index<<".spark";
 
-  scalarValues[0] = &chunkedField;
+  std::string converted = ostr.str();
 
   fileName outputFile
     ( 
      globalPODPath_
-     / scalarFormatterPtr_().getFileName
-     (
-      currentTime,
-      index, 
-      nameToWrite
-      )
+     / converted
       );
   
-  //Foam::OFstream outputStream(outputFile);
-
   std::ofstream outputStream(outputFile.c_str());
-  
-  //outputStream<< "DATASET UNSTRUCTURED_GRID" << std::endl;
 
-  forAll(chunkedField, i)
+  for(int i=0; i < chunkedField.size(); i++)
     {
-      outputStream<< chunkedField[i];
-      if(chunkedField[i] == chunkedField.last()) break; 
+      outputStream << chunkedField[i];
+      if(i == (chunkedField.size() - 1) ) break; 
       outputStream<< std::endl;  
     }
-
-  //outputStream.precision(writePrecision_);        
-
-  //scalarFormatterPtr_().write
-  //  (
-  //   scalarValues,
-  //   outputStream
-  //   );
-
-  //Pout<<"    Export data file: "<<outputFile<<nl
-  //    <<"    Output data precision:"<<outputStream.precision()<<nl;
   
   outputStream.flush();
 }
