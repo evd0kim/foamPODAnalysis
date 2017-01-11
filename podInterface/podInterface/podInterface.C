@@ -208,12 +208,12 @@ void Foam::podInterface::write()
 				      word(vector::componentNames[i])
 				      );
 		  Info<<"    Component name "<<tmpName<<nl;
-                  const volScalarField& 
-		    fieldComponent = field.component(i);
-		  const scalarField vf = 
-		    fieldComponent.internalField();
+                  const vectorField&
+                    fieldVectors = field.internalField();
+                  const scalarField cmp =
+                    fieldVectors.component(i);
 
-                  int fieldSize = vf.size();
+                  int fieldSize = cmp.size();
        
                   //mapping cells file
 
@@ -221,7 +221,7 @@ void Foam::podInterface::write()
           
                   int procChunk = chunkNumber_*(Pstream::myProcNo());
 
-                  writeField(procChunk, vf, tmpName);
+                  writeField(procChunk, cmp, tmpName);
           
                   if(debug_)
                     {
@@ -273,14 +273,14 @@ void Foam::podInterface::write()
 			     word(vector::componentNames[i]));
                   
 		  Info<<"    Component name "<<tmpName<<nl;
-                  const volScalarField& 
-		    fieldComponent = field.component(i);
-		  const scalarField vf = 
-		    fieldComponent.internalField();
+                  const vectorField&
+                    fieldVectors = field.internalField();
+                  const scalarField cmp =
+                    fieldVectors.component(i);
 
                   int chunkIndex = 0;
 
-                  writeField(chunkIndex, vf, tmpName);
+                  writeField(chunkIndex, cmp, tmpName);
                   Info<<"    Component saved. "<<endl;
                 }
             }
