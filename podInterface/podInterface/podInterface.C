@@ -39,6 +39,8 @@ License
 
 #include "direction.H"
 
+#include <iomanip>
+
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
 namespace Foam
@@ -299,7 +301,6 @@ void Foam::podInterface::write()
 	  Info<<"    Field saved."<<nl<<nl;
         };
     }                         
-
 }
 
 void Foam::podInterface::writeField(int& chunkIndex, const scalarField& field, word& nameToWrite)
@@ -354,7 +355,8 @@ void Foam::podInterface::writeChunkedField(int& index, const scalarField& chunke
   std::ostringstream ostr;
   ostr <<"raw_"<<nameToWrite
        <<"_"<<currentTime
-       <<"_"<< index<<".spark";
+       <<"_"<<  std::setfill('0') << std::setw(3)
+       << index<<".spark";
 
   std::string converted = ostr.str();
 
