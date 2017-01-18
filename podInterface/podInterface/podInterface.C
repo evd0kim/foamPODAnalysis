@@ -355,7 +355,7 @@ void Foam::podInterface::writeChunkedField(int& index, const scalarField& chunke
   std::ostringstream ostr;
   ostr <<"raw_"<<nameToWrite
        <<"_"<<currentTime
-       <<"_"<<  std::setfill('0') << std::setw(3)
+       <<"_"<<  std::setfill('0') << std::setw(5)
        << index<<".spark";
 
   std::string converted = ostr.str();
